@@ -39,19 +39,41 @@ contract P2PDEX {
     //Event for an order being cancelled
     event OrderCancelled(address indexed buyer, uint256 indexed listingId);
 
-    function createVault() external returns (address) {
+    modifier vaultGuard() {
         require(vault[msg.sender] == address(0), "Vault already exists for Seller.");
+        _;
+    }
+
+    modifier payOrFail() {
+        require(msg.value > 0, "Send some Ether.");
+        _;
+    }
+
+    function createVault() internal returns (address) {
         SellerVault sellerVault = new SellerVault(payable(msg.sender));
         vault[msg.sender] = address(sellerVault);
         emit NewVault(msg.sender, address(sellerVault));
         return address(sellerVault);
     }
 
-    function fundVault() external payable returns (uint256) {
-        require(msg.value > 0, "Send some Ether.");
-        SellerVault(vault[msg.sender]).deposit();
+    function fundVault() internal returns (uint256) {
+        SellerVault(vault[msg.sender]).deposit{value: msg.value}();
         emit NewFunding(vault[msg.sender], msg.value);
         return(msg.value);
+    }
+
+    function createAndFundVault() external payable vaultGuard payOrFail {
+        createVault();
+        fundVault();
+    }
+
+    function onlyCreateVault() external vaultGuard {
+        createVault();
+    }
+
+    function onlyFundVault() external payable payOrFail {
+        require(vault[msg.sender] != address(0), "Create Vault first.");
+        fundVault();
     }
     
     //function to create a new listing

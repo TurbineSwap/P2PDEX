@@ -1,13 +1,10 @@
-# Sample Hardhat Project
+# P2PDEX by TurbineSwap
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+TurbineSwap P2PDEX is a smart contract that allows anyone to buy and sell crypto for fiat (on/off ramp) without trusting / relying on any third party or centralized escrow service. It has inbuilt dispute mechanism, and the contract is designed in a way that decreases the risk of fraud.
 
-Try running some of the following tasks:
+Launch smart contract on localhost:
 
 ```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
 npx hardhat node
-npx hardhat run scripts/deploy.ts
+npx hardhat run --network localhost scripts/deploy.ts
 ```
