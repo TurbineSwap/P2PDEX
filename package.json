@@ -1,5 +1,5 @@
 {
-  "name": "P2PDEX",
+  "name": "p2pdex",
   "version": "1.0.0",
   "description": "Peer to Peer on/off ramp",
   "main": "index.js",
