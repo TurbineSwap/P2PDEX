@@ -1,4 +1,9 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
+
+/*
+    This software is currently UNLICENSED, which means you may not copy the code and we (Rohit Kumar Gupta, and TurbineSwap) 
+    are the sole copyright owners. We may change the license after release, so stay tuned.
+*/
 
 pragma solidity ^0.8.17;
 
@@ -12,6 +17,7 @@ contract P2PDEX {
         uint256 listingId;
         uint256 price;
         uint256 currency; // 1 for Native, 2 for DAI, 3 for USDC, 4 for USDT
+        uint256 amount;
         //uint256[] paymentMethods; 
         uint256 state; // 1 for active, 2 for pending orders, 3 for inactive
     }
@@ -27,7 +33,7 @@ contract P2PDEX {
     //Event for a new funding
     event NewFunding(address indexed vaultAddress, uint256 amount);
     //Event for a new listing
-    event NewListing(uint256 indexed listingId, address indexed seller, uint256 price, uint256 currency);
+    event NewListing(uint256 indexed listingId, address indexed seller, uint256 price, uint256 currency, uint256 amount);
     //Event for update an existing listing
     event UpdateListing(uint256 indexed listingId, uint256 indexed newPrice);
     //Event for closing an existing listing
@@ -77,18 +83,21 @@ contract P2PDEX {
     }
     
     //function to create a new listing
-    function createListing(uint256 price, uint256 currency) public {
+    function createListing(uint256 price, uint256 currency, uint256 amount) external {
         require(vault[msg.sender] != address(0), "Vault doesn't exist for seller. Please Create Vault first.");
+        require(amount <= (vault[msg.sender].balance + SellerVault(vault[msg.sender]).blockedAmount()), "Insufficient balance, please fund the wallet first.");
+        SellerVault(vault[msg.sender]).addBlockEth(amount);
         //Check if the seller already has a listing for the given token
         _listings.increment();
         _activeListings.increment();
         //Create a new listing
-        listings[_listings.current()] = Listing(msg.sender, _listings.current(), price, currency, 1);
+        listings[_listings.current()] = Listing(msg.sender, _listings.current(), price, currency, 1, amount);
         //Emit event for a new listing
-        emit NewListing(_listings.current(), msg.sender, price, currency);
+        emit NewListing(_listings.current(), msg.sender, price, currency, amount);
     }
 
-    function closeListing(uint256 listingId) public {
+    function closeListing(uint256 listingId) external {
+        require(listings[listingId].seller == msg.sender, "Only the seller can close thier listing.");
         require(listings[listingId].state == 1 || listings[listingId].state == 2, "Listing already closed");
         listings[listingId].state = 3;
         _activeListings.decrement();
@@ -144,6 +153,7 @@ contract P2PDEX {
     }
     */
 
+   //Function to view Listings that are active. All other view only functions start from here...
     function getActiveListings() public view returns (Listing[] memory) {
         Listing[] memory activeListings = new Listing[](_activeListings.current());
         uint256 activeListingCount = 0;

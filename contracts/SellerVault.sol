@@ -1,4 +1,9 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
+
+/*
+    This software is currently UNLICENSED, which means you may not copy the code and we (Rohit Kumar Gupta, and TurbineSwap) 
+    are the sole copyright owners. We may change the license after release, so stay tuned.
+*/
 
 pragma solidity ^0.8.17;
 
