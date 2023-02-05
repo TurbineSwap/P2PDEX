@@ -4,7 +4,7 @@
   "description": "Peer to Peer on/off ramp",
   "main": "index.js",
   "author": "Rohit Kumar Gupta",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@openzeppelin/contracts": "^4.8.1",
     "hardhat": "^2.12.6"
