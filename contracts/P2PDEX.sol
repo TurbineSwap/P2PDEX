@@ -7,10 +7,11 @@
 
 pragma solidity ^0.8.17;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./SellerVault.sol";
 
-contract P2PDEX {
+contract P2PDEX is Ownable {
     //Struct to hold information about a listing
     struct Listing {
         address seller;
@@ -21,13 +22,27 @@ contract P2PDEX {
         //uint256[] paymentMethods; 
         uint256 state; // 1 for active, 2 for pending orders, 3 for inactive
     }
+
+    struct BuyOrder {
+        address buyer;
+        uint256 orderId;
+        uint256 amount;
+        uint256 state; // 1 for placed, 2 for paid, 3 for settled, 4 for cancelled
+        uint256 timeStamp;
+    }
     using Counters for Counters.Counter;
     Counters.Counter private _listings;
     Counters.Counter private _activeListings;
+    Counters.Counter private _buyOrderId;
+    uint256 private _maxTimeAllowedToCancelBuy; 
     // Mapping to hold vaults of a seller. Only one vault per seller.
     mapping(address => address) public vault;
     //Mapping to hold all the listings
     mapping(uint256 => Listing) public listings;
+    //Mapping for buy order id to listing ID
+    mapping(uint256 => uint256) public buyOrderInfo;
+    //Mapping for blocked buy amount
+    mapping(address => uint256) private blockedBuyAmount;
     //Event for a new Vault
     event NewVault(address indexed sellerAddress, address indexed vaultAddress);
     //Event for a new funding
@@ -91,7 +106,7 @@ contract P2PDEX {
         _listings.increment();
         _activeListings.increment();
         //Create a new listing
-        listings[_listings.current()] = Listing(msg.sender, _listings.current(), price, currency, 1, amount);
+        listings[_listings.current()] = Listing(msg.sender, _listings.current(), price, currency, amount, 1);
         //Emit event for a new listing
         emit NewListing(_listings.current(), msg.sender, price, currency, amount);
     }
@@ -101,6 +116,7 @@ contract P2PDEX {
         require(listings[listingId].state == 1 || listings[listingId].state == 2, "Listing already closed");
         listings[listingId].state = 3;
         _activeListings.decrement();
+        SellerVault(vault[msg.sender]).reduceBlockEth(listings[listingId].amount);
         emit CloseListing(listingId);
     }
 
@@ -153,7 +169,20 @@ contract P2PDEX {
     }
     */
 
-   //Function to view Listings that are active. All other view only functions start from here...
+    function setMaxBuyTime(uint256 time) external onlyOwner {
+            _maxTimeAllowedToCancelBuy = time;
+    }
+
+    function increaseBlockAmount(address seller, uint256 amount) internal {
+        blockedBuyAmount[seller] += amount;
+    }
+
+    function decreaseBlockAmount(address seller, uint256 amount) internal {
+        require(amount <= blockedBuyAmount[seller], "Cannot Unblock more amount than already blocked.");
+        blockedBuyAmount[seller] -= amount;
+    }
+
+    //Function to view Listings that are active. All other view only functions start from here...
     function getActiveListings() public view returns (Listing[] memory) {
         Listing[] memory activeListings = new Listing[](_activeListings.current());
         uint256 activeListingCount = 0;
@@ -165,6 +194,14 @@ contract P2PDEX {
             }
         }
         return activeListings;
+    }
+
+    function getMaxBuyTime() public view returns (uint256) {
+        return _maxTimeAllowedToCancelBuy;
+    }
+
+    function getBlockAmountBySeller() external view returns (uint256) {
+        return blockedBuyAmount[msg.sender];
     }
 
 }
