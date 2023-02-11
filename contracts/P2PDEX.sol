@@ -35,14 +35,21 @@ contract P2PDEX is Ownable {
     Counters.Counter private _activeListings;
     Counters.Counter private _buyOrderId;
     uint256 private _maxTimeAllowedToCancelBuy; 
+    uint256 private _fee;
+    address payable private _feeTo;
+    uint256 private _tax;
+    address payable private _taxTo;
+    address[] private _arbitrators;
     // Mapping to hold vaults of a seller. Only one vault per seller.
     mapping(address => address) public vault;
     //Mapping to hold all the listings
     mapping(uint256 => Listing) public listings;
+    //<apping to hold listing id per address
+    mapping(address => uint256[]) private _listingsPerSeller;
     //Mapping for buy order id to listing ID
-    mapping(uint256 => uint256) public buyOrderInfo;
+    mapping(uint256 => uint256) public buyOrderListingId;
     //Mapping for blocked buy amount
-    mapping(address => uint256) private blockedBuyAmount;
+    mapping(address => uint256) private _blockedBuyAmount;
     //Event for a new Vault
     event NewVault(address indexed sellerAddress, address indexed vaultAddress);
     //Event for a new funding
@@ -107,13 +114,23 @@ contract P2PDEX is Ownable {
         _activeListings.increment();
         //Create a new listing
         listings[_listings.current()] = Listing(msg.sender, _listings.current(), price, currency, amount, 1);
+        _listingsPerSeller[msg.sender].push(_listings.current());
         //Emit event for a new listing
         emit NewListing(_listings.current(), msg.sender, price, currency, amount);
     }
 
+    function modifyListing(uint256 listingId, uint256 newPrice) external {
+        require(listings[listingId].seller == msg.sender, "Only the seller can close thier listing.");
+        //Add a require statement to check for active buy orders revert if there is an active buy order. 
+        //Essentially check for block amounts.
+        require(_blockedBuyAmount[msg.sender] == 0, "Active buy orders. Can't change price now.");
+        listings[listingId].price = newPrice;
+    }
+
     function closeListing(uint256 listingId) external {
         require(listings[listingId].seller == msg.sender, "Only the seller can close thier listing.");
-        require(listings[listingId].state == 1 || listings[listingId].state == 2, "Listing already closed");
+        require(listings[listingId].state == 1, "Listing already closed");
+        listings[listingId].amount = 0;
         listings[listingId].state = 3;
         _activeListings.decrement();
         SellerVault(vault[msg.sender]).reduceBlockEth(listings[listingId].amount);
@@ -121,15 +138,6 @@ contract P2PDEX is Ownable {
     }
 
     /*
-    //function to update the price of a listing
-    function updatePrice(uint256 listingId, uint256 newPrice) public {
-        //Check if the listing is active
-        require(listings[listingId].state == 1);
-        //Check if the msg.sender is the seller of the listing
-        require(listings[listingId].seller == msg.sender);
-        //Update the price of the listing
-        listings[listingId].price = newPrice;
-    }
     //function to place a buy order
     function placeOrder(uint256 listingId) public {
         //Check if the listing is active
@@ -173,13 +181,41 @@ contract P2PDEX is Ownable {
             _maxTimeAllowedToCancelBuy = time;
     }
 
+    function setFeeDetails(uint256 fee, address payable feeTo) external onlyOwner {
+        _fee = fee;
+        _feeTo = feeTo;
+    }
+
+    function setTaxDetails(uint256 tax, address payable taxTo) external onlyOwner {
+        _tax = tax;
+        _taxTo = taxTo;
+    }
+
+    function addArbitrator(address arbitrator) external onlyOwner {
+        _arbitrators.push(arbitrator);
+    }
+
+    function removeArbitrator(uint256 index) external onlyOwner {
+        require(index < _arbitrators.length, "Index out of bounds");
+        address[] memory newArbitrators = new address[](_arbitrators.length - 1);
+        uint256 newIndex = 0;
+        for (uint256 i = 0; i < _arbitrators.length; i++) {
+            if (i != index) {
+                newArbitrators[newIndex] = _arbitrators[i];
+                newIndex++;
+            }
+        }
+        delete _arbitrators;
+        _arbitrators = newArbitrators;
+    }
+
     function increaseBlockAmount(address seller, uint256 amount) internal {
-        blockedBuyAmount[seller] += amount;
+        _blockedBuyAmount[seller] += amount;
     }
 
     function decreaseBlockAmount(address seller, uint256 amount) internal {
-        require(amount <= blockedBuyAmount[seller], "Cannot Unblock more amount than already blocked.");
-        blockedBuyAmount[seller] -= amount;
+        require(amount <= _blockedBuyAmount[seller], "Cannot Unblock more amount than already blocked.");
+        _blockedBuyAmount[seller] -= amount;
     }
 
     //Function to view Listings that are active. All other view only functions start from here...
@@ -201,7 +237,30 @@ contract P2PDEX is Ownable {
     }
 
     function getBlockAmountBySeller() external view returns (uint256) {
-        return blockedBuyAmount[msg.sender];
+        return _blockedBuyAmount[msg.sender];
     }
 
+    function getFee() external view returns (uint256) {
+        return _fee;
+    }
+
+    function getFeeTo() external view returns (address payable) {
+        return _feeTo;
+    }
+
+    function getTax() external view returns (uint256) {
+        return _tax;
+    }
+
+    function getTaxTo() external view returns (address payable) {
+        return _taxTo;
+    }
+
+    function getListingsBySeller() external view returns (uint256[] memory) {
+        return _listingsPerSeller[msg.sender];
+    }
+
+    function getArbitrators() external view returns (address[] memory) {
+        return _arbitrators;
+    }
 }
