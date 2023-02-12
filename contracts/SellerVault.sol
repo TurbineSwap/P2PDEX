@@ -117,4 +117,9 @@ contract SellerVault is Ownable, ReentrancyGuard {
         require(amount <= blockedUSDT, "Cannot Unblock more amount than already blocked.");
         blockedUSDT -= amount;
     }
+
+    //Transfer money to buyer on successful off-chain transaction.
+    function settleBuyOrder(address payable buyer, uint256 amount) external onlyOwner {
+        buyer.transfer(amount);
+    }
 }

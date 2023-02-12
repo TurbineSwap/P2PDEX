@@ -46,6 +46,10 @@ contract P2PDEX is Ownable {
     mapping(uint256 => Listing) public listings;
     //<apping to hold listing id per address
     mapping(address => uint256[]) private _listingsPerSeller;
+    //Mapping to hold Buy Order Info
+    mapping(uint256 => BuyOrder) public buyOrders;
+    //Mapping to hold all Buy Orders of a Buyer
+    mapping(address => uint256[]) private _buysPerSeller;
     //Mapping for buy order id to listing ID
     mapping(uint256 => uint256) public buyOrderListingId;
     //Mapping for blocked buy amount
@@ -135,6 +139,28 @@ contract P2PDEX is Ownable {
         _activeListings.decrement();
         SellerVault(vault[msg.sender]).reduceBlockEth(listings[listingId].amount);
         emit CloseListing(listingId);
+    }
+
+    function placeBuyOrder(uint256 listingId, uint256 amount) external {
+        require(listings[listingId].state == 1, "Listing inactive or blocked for trade. Please try again later.");
+        require(listings[listingId].amount >= amount, "Please retry with amount less than or equal to the listing.");
+        listings[listingId].state = 2;
+        increaseBlockAmount(listings[listingId].seller, amount);
+        _buyOrderId.increment();
+        buyOrders[_buyOrderId.current()] = BuyOrder(msg.sender, _buyOrderId.current(), amount, 1, block.timestamp);
+        buyOrderListingId[_buyOrderId.current()] = listingId;
+    }
+
+    function markPaid(uint256 buyOrderId) external {
+        require(buyOrders[buyOrderId].buyer == msg.sender, "Only the buyer can execute this function.");
+        buyOrders[buyOrderId].state = 2;
+    }
+
+    function releaseTokens(uint256 buyOrderId) external {
+        require(listings[buyOrderListingId[buyOrderId]].seller == msg.sender, "Only the seller can call this function.");
+        buyOrders[buyOrderId].state = 3;
+        SellerVault(vault[msg.sender]).reduceBlockEth(buyOrders[buyOrderId].amount);
+        SellerVault(vault[msg.sender]).settleBuyOrder(payable(buyOrders[buyOrderId].buyer), buyOrders[buyOrderId].amount);
     }
 
     /*
