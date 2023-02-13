@@ -8,6 +8,7 @@
 pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./SellerVault.sol";
 
@@ -111,7 +112,7 @@ contract P2PDEX is Ownable {
     //function to create a new listing
     function createListing(uint256 price, uint256 currency, uint256 amount) external {
         require(vault[msg.sender] != address(0), "Vault doesn't exist for seller. Please Create Vault first.");
-        require(amount <= (vault[msg.sender].balance + SellerVault(vault[msg.sender]).blockedAmount()), "Insufficient balance, please fund the wallet first.");
+        require(amount <= (vault[msg.sender].balance - SellerVault(vault[msg.sender]).blockedAmount()), "Insufficient balance, please fund the wallet first.");
         SellerVault(vault[msg.sender]).addBlockEth(amount);
         //Check if the seller already has a listing for the given token
         _listings.increment();
@@ -133,17 +134,17 @@ contract P2PDEX is Ownable {
 
     function closeListing(uint256 listingId) external {
         require(listings[listingId].seller == msg.sender, "Only the seller can close thier listing.");
-        require(listings[listingId].state == 1, "Listing already closed");
+        require(listings[listingId].state == 1, "Listing already closed or has active buy Order. Please try again later.");
+        SellerVault(vault[msg.sender]).reduceBlockEth(listings[listingId].amount);
         listings[listingId].amount = 0;
         listings[listingId].state = 3;
         _activeListings.decrement();
-        SellerVault(vault[msg.sender]).reduceBlockEth(listings[listingId].amount);
         emit CloseListing(listingId);
     }
 
     function placeBuyOrder(uint256 listingId, uint256 amount) external {
-        require(listings[listingId].state == 1, "Listing inactive or blocked for trade. Please try again later.");
-        require(listings[listingId].amount >= amount, "Please retry with amount less than or equal to the listing.");
+        require(listings[listingId].state == 1 || listings[listingId].state == 2, "Listing inactive.");
+        require((listings[listingId].amount - _blockedBuyAmount[listings[listingId].seller]) >= amount, "Please retry with amount less than or equal to the listing.");
         listings[listingId].state = 2;
         increaseBlockAmount(listings[listingId].seller, amount);
         _buyOrderId.increment();
@@ -158,50 +159,23 @@ contract P2PDEX is Ownable {
 
     function releaseTokens(uint256 buyOrderId) external {
         require(listings[buyOrderListingId[buyOrderId]].seller == msg.sender, "Only the seller can call this function.");
+        require(buyOrders[buyOrderId].state != 3, "Already Paid.");
+        require(buyOrders[buyOrderId].state != 4, "Buy order cancelled.");
         buyOrders[buyOrderId].state = 3;
+        listings[buyOrderListingId[buyOrderId]].amount -= buyOrders[buyOrderId].amount;
         SellerVault(vault[msg.sender]).reduceBlockEth(buyOrders[buyOrderId].amount);
         SellerVault(vault[msg.sender]).settleBuyOrder(payable(buyOrders[buyOrderId].buyer), buyOrders[buyOrderId].amount);
+        decreaseBlockAmount(listings[buyOrderListingId[buyOrderId]].seller, buyOrders[buyOrderId].amount);
+        if (listings[buyOrderListingId[buyOrderId]].amount == 0) {
+            listings[buyOrderListingId[buyOrderId]].state = 3;
+            _activeListings.decrement();
+            emit CloseListing(buyOrderListingId[buyOrderId]);
+        } else if (_blockedBuyAmount[listings[buyOrderListingId[buyOrderId]].seller] == 0) {
+            listings[buyOrderListingId[buyOrderId]].state = 1;
+        }
     }
 
-    /*
-    //function to place a buy order
-    function placeOrder(uint256 listingId) public {
-        //Check if the listing is active
-        require(listings[listingId].state == 1);
-        //Check if the buyer already has a pending order
-        require(listings[listingId].state != 2);
-        //Update the state of the listing to pending
-        listings[listingId].state = 2;
-        //Emit event for a new order
-        emit NewOrder(msg.sender, listingId, listings[listingId].price);
-    }
-    //function to settle an order
-    function settleOrder(uint256 listingId) public {
-        //Check if the listing is in pending state
-        require(listings[listingId].state == 2);
-        //Check if the msg.sender is the seller of the listing
-        require(listings[listingId].seller == msg.sender);
-        //Transfer the tokens to the buyer
-        //transferFrom(...)
-        //Transfer the funds to the seller
-        //transfer(...)
-        //Update the state of the listing to inactive
-        listings[listingId].state = 3;
-        //Emit event for an order being settled
-        emit OrderSettled(msg.sender, listingId);
-    }
-    //function to cancel an order
-    function cancelOrder(uint256 listingId) public {
-        //Check if the listing is in pending state
-        require(listings[listingId].state == 2);
-        //Check if the msg.sender is the buyer of the listing
-        require(listings[msg.sender].listingId == listingId);
-        //Update the state of the listing to active
-        listings[listingId].state = 1;
-        //Emit event for an order being cancelled
-        emit OrderCancelled(msg.sender, listingId);
-    }
-    */
+    // Other settings start here..
 
     function setMaxBuyTime(uint256 time) external onlyOwner {
             _maxTimeAllowedToCancelBuy = time;
