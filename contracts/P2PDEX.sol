@@ -23,7 +23,7 @@ contract P2PDEX is Ownable {
         //uint256[] paymentMethods; 
         uint256 state; // 1 for active, 2 for pending orders, 3 for inactive
     }
-
+    //Struct to hold information about a buy order
     struct BuyOrder {
         address buyer;
         uint256 orderId;
@@ -41,6 +41,10 @@ contract P2PDEX is Ownable {
     uint256 private _tax;
     address payable private _taxTo;
     address[] private _arbitrators;
+    //_paymentMethodId is a counter for the number of payment methods. 
+    Counters.Counter private _paymentMethodId;
+    //_paymentMethods is a mapping that maps the payment method id to the name of payment method.
+    mapping(uint256 => string) private _paymentMethods;
     // Mapping to hold vaults of a seller. Only one vault per seller.
     mapping(address => address) public vault;
     //Mapping to hold all the listings
@@ -209,6 +213,15 @@ contract P2PDEX is Ownable {
         _arbitrators = newArbitrators;
     }
 
+    function addPaymentMethods(uint256 numberOfMethods, string[] memory methods) external onlyOwner {
+        require(numberOfMethods > 0, "Methods should be at least one.");
+        require(methods.length == numberOfMethods, "Method numbers mismatch.");
+        for (uint256 i = 0; i < numberOfMethods; i++) {
+            _paymentMethodId.increment();
+            _paymentMethods[_paymentMethodId.current()] = methods[i];
+        }
+    }
+
     function increaseBlockAmount(address seller, uint256 amount) internal {
         _blockedBuyAmount[seller] += amount;
     }
@@ -262,5 +275,21 @@ contract P2PDEX is Ownable {
 
     function getArbitrators() external view returns (address[] memory) {
         return _arbitrators;
+    }
+
+    function getPaymentMethods() external view returns (string[] memory) {
+        string[] memory paymentMethodsList = new string[](_paymentMethodId.current());
+        for(uint256 i = 0; i < _paymentMethodId.current(); i++) {
+            paymentMethodsList[i] = _paymentMethods[i+1];
+        }
+        return paymentMethodsList;
+    }
+
+    function getPaymentMethod(uint256 index) external view returns (string memory) {
+        return _paymentMethods[index];
+    }
+
+    function getPaymentMethodsCount() external view returns (uint256) {
+        return _paymentMethodId.current();
     }
 }
